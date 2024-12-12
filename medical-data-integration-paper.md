@@ -41,7 +41,7 @@ Our extraction methodology employed:
 ### 2.2 Search Parameters
 
 For this study, we focused on three primary medical conditions:
-- Breast Cancer
+- Cancer
 - Diabetes
 - Alzheimer's Disease
 
@@ -53,7 +53,7 @@ Our PubMed scraping yielded the following insights:
 
 | Condition | Total Articles | Average Publication Year | Key Research Trends |
 |-----------|----------------|--------------------------|---------------------|
-| Breast Cancer | 328 | 2021-2023 | Targeted therapies, genetic markers |
+| Cancer(in general) | 328 | 2021-2023 | Targeted therapies, genetic markers |
 | Diabetes | 276 | 2020-2022 | Metabolic interventions, lifestyle studies |
 | Alzheimer's | 215 | 2019-2022 | Neurological mechanisms, early detection |
 
