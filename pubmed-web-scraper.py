@@ -1,147 +1,174 @@
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
+import json
 import time
 import logging
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
+from typing import List, Dict, Optional
+from urllib.parse import urljoin
 
-class CDCScraper:
-    def __init__(self):
+class MedicalInfoScraper:
+    def __init__(self, sources: List[str], output_file: str = 'medical_data.json'):
+        """
+        Initialize the Medical Information Scraper
+        
+        :param sources: List of URLs to scrape medical information from
+        :param output_file: File to save scraped data
+        """
+        self.sources = sources
+        self.output_file = output_file
+        self.scraped_data = []
+        
         # Configure logging
-        logging.basicConfig(level=logging.INFO, 
-                            format='%(asctime)s - %(levelname)s: %(message)s')
+        logging.basicConfig(
+            level=logging.INFO, 
+            format='%(asctime)s - %(levelname)s: %(message)s',
+            filename='medical_scraper.log'
+        )
+        self.logger = logging.getLogger()
+
+    def _get_html_content(self, url: str) -> Optional[str]:
+        """
+        Fetch HTML content from a given URL
         
-        # Configure Chrome options for headless browsing
-        self.chrome_options = Options()
-        self.chrome_options.add_argument("--headless")  # Run in background
-        self.chrome_options.add_argument("--no-sandbox")
-        self.chrome_options.add_argument("--disable-dev-shm-usage")
+        :param url: URL to fetch
+        :return: HTML content or None if fetch fails
+        """
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            return response.text
+        except requests.RequestException as e:
+            self.logger.error(f"Error fetching {url}: {e}")
+            return None
+
+    def scrape_pubmed(self, search_term: str, max_results: int = 50) -> List[Dict]:
+        """
+        Scrape medical research articles from PubMed
         
-        self.base_url = "https://www.cdc.gov"
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        :param search_term: Medical research topic to search
+        :param max_results: Maximum number of results to retrieve
+        :return: List of scraped article details
+        """
+        base_url = "https://pubmed.ncbi.nlm.nih.gov/"
+        search_url = f"{base_url}?term={search_term}&size={max_results}"
+        
+        html_content = self._get_html_content(search_url)
+        if not html_content:
+            return []
+
+        soup = BeautifulSoup(html_content, 'html.parser')
+        articles = []
+
+        for article_elem in soup.find_all('article', class_='full-docsum'):
+            try:
+                title_elem = article_elem.find('a', class_='docsum-title')
+                authors_elem = article_elem.find('span', class_='docsum-authors')
+                journal_elem = article_elem.find('span', class_='docsum-journal-citation')
+
+                article_data = {
+                    'title': title_elem.text.strip() if title_elem else 'N/A',
+                    'authors': authors_elem.text.strip() if authors_elem else 'N/A',
+                    'journal': journal_elem.text.strip() if journal_elem else 'N/A',
+                    'url': urljoin(base_url, title_elem['href']) if title_elem and 'href' in title_elem.attrs else 'N/A'
+                }
+                articles.append(article_data)
+            except Exception as e:
+                self.logger.warning(f"Error parsing article: {e}")
+
+        return articles
+
+    def scrape_clinical_trials(self, condition: str, max_results: int = 30) -> List[Dict]:
+        """
+        Scrape clinical trials information
+        
+        :param condition: Medical condition to search clinical trials for
+        :param max_results: Maximum number of trials to retrieve
+        :return: List of clinical trial details
+        """
+        base_url = "https://clinicaltrials.gov/search"
+        params = {
+            'term': condition,
+            'lim': max_results
         }
-
-    def scrape_disease_data(self):
-        """
-        Scrape disease prevalence data from CDC using multiple methods
-        """
-        # Try Selenium scraping first
-        selenium_data = self.selenium_advanced_scrape()
         
-        if selenium_data is not None and not selenium_data.empty:
-            logging.info("Successfully scraped data using Selenium")
-            return selenium_data
-        
-        # Fallback to requests-based scraping
         try:
-            url = f"{self.base_url}/diseases/index.html"
-            response = requests.get(url, headers=self.headers)
-            soup = BeautifulSoup(response.content, 'html.parser')
+            response = requests.get(base_url, params=params)
+            response.raise_for_status()
             
-            # Find disease tables or sections
-            disease_sections = soup.find_all('div', class_='disease-item')
+            soup = BeautifulSoup(response.text, 'html.parser')
+            trials = []
             
-            diseases = []
-            for section in disease_sections:
-                try:
-                    disease_name = section.find('h3')
-                    disease_description = section.find('p')
-                    
-                    if disease_name and disease_description:
-                        diseases.append({
-                            'name': disease_name.text.strip(),
-                            'description': disease_description.text.strip()
-                        })
-                except Exception as e:
-                    logging.warning(f"Error parsing individual disease: {e}")
+            for trial_elem in soup.find_all('div', class_='trial-result'):
+                trial_data = {
+                    'title': trial_elem.find('h3').text.strip() if trial_elem.find('h3') else 'N/A',
+                    'condition': condition,
+                    'status': trial_elem.find('span', class_='trial-status').text.strip() if trial_elem.find('span', class_='trial-status') else 'N/A'
+                }
+                trials.append(trial_data)
             
-            # Convert to DataFrame
-            df = pd.DataFrame(diseases)
-            
-            # Export to CSV
-            self.export_to_csv(df)
-            
-            return df
+            return trials
         
-        except Exception as e:
-            logging.error(f"Error scraping CDC: {e}")
-            return pd.DataFrame()
+        except requests.RequestException as e:
+            self.logger.error(f"Error scraping clinical trials: {e}")
+            return []
 
-    def selenium_advanced_scrape(self):
+    def save_to_json(self, data: List[Dict]):
         """
-        Advanced scraping using Selenium for dynamic content
+        Save scraped data to JSON file
+        
+        :param data: List of dictionaries to save
         """
         try:
-            # Setup WebDriver
-            driver = webdriver.Chrome(
-                service=Service(ChromeDriverManager().install()),
-                options=self.chrome_options
-            )
-            
-            # Navigate to page
-            driver.get(f"{self.base_url}/diseases/index.html")
-            time.sleep(5)  # Wait for dynamic content
-            
-            # Find disease elements
-            disease_elements = driver.find_elements(By.CLASS_NAME, 'disease-item')
-            
-            diseases = []
-            for element in disease_elements:
-                try:
-                    name = element.find_element(By.TAG_NAME, 'h3').text
-                    details = element.find_element(By.TAG_NAME, 'p').text
-                    
-                    diseases.append({
-                        'name': name,
-                        'description': details
-                    })
-                except Exception as e:
-                    logging.warning(f"Error extracting disease details: {e}")
-            
-            # Convert to DataFrame
-            df = pd.DataFrame(diseases)
-            
-            # Export to CSV
-            self.export_to_csv(df)
-            
-            return df
-        
+            with open(self.output_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+            self.logger.info(f"Data saved to {self.output_file}")
         except Exception as e:
-            logging.error(f"Selenium scraping error: {e}")
-            return pd.DataFrame()
-        
-        finally:
-            # Ensure driver is closed
-            if 'driver' in locals():
-                driver.quit()
+            self.logger.error(f"Error saving data: {e}")
 
-    def export_to_csv(self, df, filename='cdc_disease_data.csv'):
+    def run_scraping(self, search_term: str):
         """
-        Export DataFrame to CSV
+        Run comprehensive medical information scraping
+        
+        :param search_term: Term to search across sources
         """
-        try:
-            df.to_csv(filename, index=False)
-            logging.info(f"Data exported successfully to {filename}")
-        except Exception as e:
-            logging.error(f"Error exporting to CSV: {e}")
+        self.logger.info(f"Starting scraping for term: {search_term}")
+        
+        # Scrape multiple sources
+        pubmed_results = self.scrape_pubmed(search_term)
+        clinical_trials_results = self.scrape_clinical_trials(search_term)
+        
+        # Combine and save results
+        self.scraped_data = pubmed_results + clinical_trials_results
+        self.save_to_json(self.scraped_data)
+        
+        self.logger.info(f"Scraping completed. Total results: {len(self.scraped_data)}")
 
 def main():
-    # Create scraper instance
-    cdc_scraper = CDCScraper()
+    # Example usage
+    scraper = MedicalInfoScraper(
+        sources=[
+            'https://pubmed.ncbi.nlm.nih.gov/',
+            'https://clinicaltrials.gov/'
+        ]
+    )
     
-    # Scrape data
-    disease_data = cdc_scraper.scrape_disease_data()
-    
-    # Display results
-    print("Scraped Disease Data:")
-    print(disease_data)
-    
-    # Automatically exported to CSV via the scraper method
+    # Run scraper for a specific medical condition
+    scraper.run_scraping("diabetes management")
 
 if __name__ == "__main__":
     main()
+
+# Requirements (install via pip):
+# requests
+# beautifulsoup4
+# pandas
+
+# Ethical and Legal Note:
+# Always ensure you have permission to scrape websites.
+# Respect robots.txt and website terms of service.
+# Use rate limiting and be considerate of server load.
