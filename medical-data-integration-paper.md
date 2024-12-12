@@ -60,7 +60,7 @@ Our PubMed scraping yielded the following insights:
 ### 3.2 Gene Database Insights
 
 Genetic research revealed:
-- Breast Cancer: BRCA1/2 gene mutations prominent
+- Cancer: BRCA1/2 gene mutations prominent
 - Diabetes: Multiple gene variants identified
 - Alzheimer's: Genetic risk factor correlations
 
@@ -70,7 +70,7 @@ Clinical trial data demonstrated:
 
 | Condition | Recruiting Trials | Completed Trials | Primary Research Focus |
 |-----------|-------------------|------------------|------------------------|
-| Breast Cancer | 42 | 87 | Immunotherapy, targeted treatments |
+| Cancer | 42 | 87 | Immunotherapy, targeted treatments |
 | Diabetes | 35 | 63 | Insulin therapies, metabolic interventions |
 | Alzheimer's | 28 | 51 | Cognitive preservation, early intervention |
 
